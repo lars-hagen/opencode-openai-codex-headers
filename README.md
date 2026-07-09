@@ -10,17 +10,22 @@ When you log into the `openai` provider with ChatGPT Plus/Pro, opencode talks to
 the Codex backend at `chatgpt.com/backend-api/codex`. Its built-in auth plugin
 tags every request with `originator: opencode` and a `User-Agent: opencode/<version>`.
 
-That backend gates the GPT-5.6 family on the client identity:
+That backend gates the GPT-5.6 family on the client identity. Surveying all 12
+stock GPT-5.6 models on a ChatGPT Plus account (the `-fast` / `-pro` suffixes are
+not separate API ids; opencode sends the base model with a `service_tier` /
+`reasoning.mode` body param, so each row covers its whole family):
 
-| Model | Without the Codex signature |
-| --- | --- |
-| `gpt-5.6-luna` (+ `-pro`) | HTTP 404 `Model not found gpt-5.6-luna` |
-| `gpt-5.6-terra` | intermittent `server_is_overloaded` (deprioritized under load) |
-| `gpt-5.6-sol` | HTTP 400 `not supported when using Codex with a ChatGPT account` on accounts without Sol entitlement (unfixable here) |
+| Model family | Without the Codex signature | With this plugin |
+| --- | --- | --- |
+| `gpt-5.6-luna` (`-fast`, `-pro`) | HTTP 404 `Model not found gpt-5.6-luna` | fixed, served |
+| `gpt-5.6-terra` (`-fast`, `-pro`) | works, but load-shed with `server_is_overloaded` under contention | works + Codex priority tier |
+| `gpt-5.6-sol` (`-fast`, `-pro`) | HTTP 400 `not supported when using Codex with a ChatGPT account` | unchanged (account gate) |
+| `gpt-5.6` (`-fast`, `-pro`) | HTTP 400 `not supported when using Codex with a ChatGPT account` | unchanged (account gate) |
 
-The genuine Codex CLI does not hit these because it sends
+The genuine Codex CLI does not hit the 404 / load-shed because it sends
 `originator: codex_cli_rs` **and** `User-Agent: codex_cli_rs/<version>`. The
-backend requires **both**.
+backend requires **both**. The `400 not supported` cases are a separate
+account-entitlement gate that no header can change.
 
 ## What it does
 
@@ -60,11 +65,12 @@ Pin a version with a tag if you want reproducible installs:
 
 ## Notes
 
-- Fixes `gpt-5.6-luna`, `gpt-5.6-luna-pro`, and `gpt-5.6-terra` on a ChatGPT
-  Plus/Pro subscription.
-- Does **not** unlock `gpt-5.6-sol` on accounts that lack Sol entitlement; that is
-  an account-level gate, not a header check. Sol is account-specific, so some
-  accounts have it and some do not.
+- Recovers the entire **Luna** tier (`gpt-5.6-luna` + `-fast` / `-pro`), which is
+  otherwise a hard 404, and keeps the **Terra** tier in the Codex priority tier so
+  it stops getting `server_is_overloaded` under load.
+- Does **not** unlock `gpt-5.6-sol` or base `gpt-5.6`. Those return `400 not
+  supported` from an account-entitlement gate, not a header check. Entitlement is
+  account-specific: some accounts have Sol, some do not, and no header changes that.
 - The gate is prefix-based on `codex_cli_rs/`, so the exact version string is not
   critical; bump `CODEX_USER_AGENT` if OpenAI ever tightens the check.
 

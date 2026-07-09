@@ -1,10 +1,13 @@
 # opencode-openai-codex-headers
 
-A one-hook [opencode](https://opencode.ai) plugin that makes your ChatGPT Plus/Pro
-(Codex backend) requests identify as the real **Codex CLI**. It fixes the GPT-5.6
-**Luna** models that otherwise return `404 Model not found`, and stops GPT-5.6
-**Terra** getting `server_is_overloaded` under load. One `chat.headers` hook,
-scoped to the `openai` provider; everything else untouched.
+An [opencode](https://opencode.ai) plugin for ChatGPT Plus/Pro (Codex backend)
+users. It does two things, both scoped to the `openai` provider:
+
+1. Makes requests identify as the real **Codex CLI**, fixing GPT-5.6 **Luna**
+   models that otherwise return `404 Model not found` and stopping GPT-5.6
+   **Terra** getting `server_is_overloaded` under load.
+2. Cleans up GPT-5.6 **reasoning summaries** so the "Thought" blocks show a clean
+   headline instead of a stray `<!-- -->` marker.
 
 ## Install
 
@@ -14,7 +17,7 @@ Two ways, both install straight from GitHub (no npm publish involved).
 for your global `~/.config/opencode`, drop it to add to the current project:
 
 ```bash
-opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.0.0 -g
+opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.1.0 -g
 ```
 
 **Manual** add it to the `plugin` array in your `opencode.json`:
@@ -22,11 +25,11 @@ opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.0.0 -g
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.0.0"]
+  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.1.0"]
 }
 ```
 
-The `#v1.0.0` tag pins a reproducible version. Omit it
+The `#v1.1.0` tag pins a reproducible version. Omit it
 (`github:lars-hagen/opencode-openai-codex-headers`) to track the default branch at
 install time instead.
 
@@ -55,21 +58,36 @@ account-entitlement gate that no header can change.
 
 ## What it does
 
-Registers a `chat.headers` hook that overwrites those two headers for the
-`openai` provider only. Config plugins load after opencode's internal ones, and
-opencode runs every `chat.headers` hook in order against one shared output, so
-this override lands last and wins. No fetch wrapping, no token handling, no
-source patch. Every other provider is left untouched.
+**Headers.** Registers a `chat.headers` hook that overwrites those two headers
+for the `openai` provider only. Config plugins load after opencode's internal
+ones, and opencode runs every `chat.headers` hook in order against one shared
+output, so this override lands last and wins. Every other provider is left
+untouched.
 
 ```ts
-export default () => ({
-  "chat.headers": async (input, output) => {
-    if (input?.model?.providerID !== "openai") return
-    output.headers.originator = "codex_cli_rs"
-    output.headers["User-Agent"] = "codex_cli_rs/0.144.0"
-  },
-})
+"chat.headers": async (input, output) => {
+  if (input?.model?.providerID !== "openai") return
+  output.headers.originator = "codex_cli_rs"
+  output.headers["User-Agent"] = "codex_cli_rs/0.144.0"
+}
 ```
+
+## Reasoning summaries
+
+GPT-5.6 emits reasoning summaries in a new headline format: each part is a bold
+title followed by an empty HTML comment, `**Title**\n\n<!-- -->`, with no prose
+body. opencode's TUI summary parser takes the leading `**bold**` as the header
+and renders the rest as the body, so 5.6 "Thought" blocks show a literal
+`<!-- -->` instead of a clean headline (5.5 is unaffected because it emits real
+prose).
+
+opencode exposes no hook to transform reasoning text, so the plugin strips the
+markers on the wire: it wraps `globalThis.fetch` and rewrites the
+`response.reasoning_summary_text` SSE events from the Codex Responses endpoint
+before opencode parses them. Only those event lines are touched; every other
+byte of every response passes through unchanged. Once the empty comment is
+removed the body collapses and only the bold headline remains, matching how the
+Codex CLI renders it.
 
 ## Notes
 

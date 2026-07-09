@@ -1,8 +1,14 @@
 # opencode-openai-codex-headers
 
-Tiny [opencode](https://opencode.ai) plugin that makes OpenAI **ChatGPT
-Plus/Pro OAuth** requests identify as the official **Codex CLI**, so the newer
-GPT-5.6 models served through the ChatGPT Codex backend stop failing.
+> **TL;DR** — A one-hook [opencode](https://opencode.ai) plugin that makes your
+> ChatGPT Plus/Pro (Codex backend) requests identify as the real **Codex CLI**.
+> **Fixes** the GPT-5.6 **Luna** models that otherwise return `404 Model not
+> found`, and stops GPT-5.6 **Terra** getting `server_is_overloaded` under load.
+> Install: `opencode plugin github:lars-hagen/opencode-openai-codex-headers -g`
+
+Tiny plugin that makes OpenAI **ChatGPT Plus/Pro OAuth** requests identify as the
+official **Codex CLI**, so the newer GPT-5.6 models served through the ChatGPT
+Codex backend stop failing.
 
 ## The problem
 
@@ -47,8 +53,15 @@ export default () => ({
 
 ## Install
 
-Add it to the `plugin` array in your `opencode.json`. No npm publish required;
-opencode installs directly from GitHub:
+One command, installs from GitHub and writes it into your config (no npm publish
+involved). Use `-g` for your global `~/.config/opencode`, drop it to add to the
+current project:
+
+```bash
+opencode plugin github:lars-hagen/opencode-openai-codex-headers -g
+```
+
+Or add it to the `plugin` array in your `opencode.json` by hand:
 
 ```json
 {

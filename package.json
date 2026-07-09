@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "opencode-openai-codex-headers",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "OpenCode plugin: make ChatGPT-OAuth (Codex backend) requests identify as the Codex CLI so gated GPT-5.6 models (luna, terra) stop returning 'Model not found' / 'server_is_overloaded'",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "plugin",
+    "openai",
+    "codex",
+    "chatgpt",
+    "gpt-5.6"
+  ],
+  "license": "MIT",
+  "author": "Lars Hagen <larsh2690@hotmail.com>",
+  "homepage": "https://github.com/lars-hagen/opencode-openai-codex-headers#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lars-hagen/opencode-openai-codex-headers.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lars-hagen/opencode-openai-codex-headers/issues"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/index.ts"
+  }
+}

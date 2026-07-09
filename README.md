@@ -1,14 +1,34 @@
 # opencode-openai-codex-headers
 
-> **TL;DR** — A one-hook [opencode](https://opencode.ai) plugin that makes your
-> ChatGPT Plus/Pro (Codex backend) requests identify as the real **Codex CLI**.
-> **Fixes** the GPT-5.6 **Luna** models that otherwise return `404 Model not
-> found`, and stops GPT-5.6 **Terra** getting `server_is_overloaded` under load.
-> Install: `opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.0.0 -g`
+A one-hook [opencode](https://opencode.ai) plugin that makes your ChatGPT Plus/Pro
+(Codex backend) requests identify as the real **Codex CLI**. It fixes the GPT-5.6
+**Luna** models that otherwise return `404 Model not found`, and stops GPT-5.6
+**Terra** getting `server_is_overloaded` under load. One `chat.headers` hook,
+scoped to the `openai` provider; everything else untouched.
 
-Tiny plugin that makes OpenAI **ChatGPT Plus/Pro OAuth** requests identify as the
-official **Codex CLI**, so the newer GPT-5.6 models served through the ChatGPT
-Codex backend stop failing.
+## Install
+
+Two ways, both install straight from GitHub (no npm publish involved).
+
+**Quick, via the opencode CLI** installs and writes it into your config. Use `-g`
+for your global `~/.config/opencode`, drop it to add to the current project:
+
+```bash
+opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.0.0 -g
+```
+
+**Manual** add it to the `plugin` array in your `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.0.0"]
+}
+```
+
+The `#v1.0.0` tag pins a reproducible version. Omit it
+(`github:lars-hagen/opencode-openai-codex-headers`) to track the default branch at
+install time instead.
 
 ## The problem
 
@@ -50,29 +70,6 @@ export default () => ({
   },
 })
 ```
-
-## Install
-
-One command, installs from GitHub and writes it into your config (no npm publish
-involved). Use `-g` for your global `~/.config/opencode`, drop it to add to the
-current project:
-
-```bash
-opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.0.0 -g
-```
-
-Or add it to the `plugin` array in your `opencode.json` by hand:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.0.0"]
-}
-```
-
-The `#v1.0.0` tag pins a reproducible version. Omit it
-(`github:lars-hagen/opencode-openai-codex-headers`) to track the default branch at
-install time instead.
 
 ## Notes
 

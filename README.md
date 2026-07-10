@@ -15,7 +15,7 @@ users. It does two things, both scoped to the `openai` provider:
 current project):
 
 ```bash
-opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.1 -g
+opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.2 -g
 ```
 
 **Manual**: add it to the `plugin` array in your `opencode.json`:
@@ -23,11 +23,11 @@ opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.1 -g
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.2.1"]
+  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.2.2"]
 }
 ```
 
-The `#v1.2.1` tag pins a reproducible version; omit it to track the default branch.
+The `#v1.2.2` tag pins a reproducible version; omit it to track the default branch.
 
 ## The problem
 

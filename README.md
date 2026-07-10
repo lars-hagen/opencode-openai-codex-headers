@@ -17,7 +17,7 @@ Two ways, both install straight from GitHub (no npm publish involved).
 for your global `~/.config/opencode`, drop it to add to the current project:
 
 ```bash
-opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.1.0 -g
+opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.0 -g
 ```
 
 **Manual** add it to the `plugin` array in your `opencode.json`:
@@ -25,11 +25,11 @@ opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.1.0 -g
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.1.0"]
+  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.2.0"]
 }
 ```
 
-The `#v1.1.0` tag pins a reproducible version. Omit it
+The `#v1.2.0` tag pins a reproducible version. Omit it
 (`github:lars-hagen/opencode-openai-codex-headers`) to track the default branch at
 install time instead.
 

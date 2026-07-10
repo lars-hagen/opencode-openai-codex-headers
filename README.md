@@ -11,16 +11,14 @@ users. It does two things, both scoped to the `openai` provider:
 
 ## Install
 
-Two ways, both install straight from GitHub (no npm publish involved).
-
-**Quick, via the opencode CLI** installs and writes it into your config. Use `-g`
-for your global `~/.config/opencode`, drop it to add to the current project:
+**Via the opencode CLI** (`-g` writes it to your global config; drop it for the
+current project):
 
 ```bash
 opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.1 -g
 ```
 
-**Manual** add it to the `plugin` array in your `opencode.json`:
+**Manual**: add it to the `plugin` array in your `opencode.json`:
 
 ```json
 {
@@ -29,9 +27,7 @@ opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.1 -g
 }
 ```
 
-The `#v1.2.1` tag pins a reproducible version. Omit it
-(`github:lars-hagen/opencode-openai-codex-headers`) to track the default branch at
-install time instead.
+The `#v1.2.1` tag pins a reproducible version; omit it to track the default branch.
 
 ## The problem
 
@@ -58,53 +54,32 @@ account-entitlement gate that no header can change.
 
 ## What it does
 
-**Headers.** Registers a `chat.headers` hook that overwrites those two headers
-for the `openai` provider only. Config plugins load after opencode's internal
-ones, and opencode runs every `chat.headers` hook in order against one shared
-output, so this override lands last and wins. Every other provider is left
-untouched.
-
-```ts
-"chat.headers": async (input, output) => {
-  if (input?.model?.providerID !== "openai") return
-  output.headers.originator = "codex_cli_rs"
-  output.headers["User-Agent"] = "codex_cli_rs/0.144.0"
-}
-```
+**Headers.** A `chat.headers` hook overwrites `originator` and `User-Agent` for the
+`openai` provider only, so requests present the genuine Codex CLI signature. It
+loads after opencode's internal hooks and runs against the same shared output, so
+it wins; every other provider is untouched.
 
 ## Reasoning summaries
 
-GPT-5.6 emits reasoning summaries in a new headline format: each part is a bold
-title followed by an empty HTML comment, `**Title**\n\n<!-- -->`, with no prose
-body. opencode's TUI summary parser takes the leading `**bold**` as the header
-and renders the rest as the body, so 5.6 "Thought" blocks show a literal
-`<!-- -->` instead of a clean headline (5.5 is unaffected because it emits real
-prose).
+GPT-5.6 emits each reasoning-summary part as a bold title followed by an empty HTML
+comment, `**Title**\n\n<!-- -->`, with no prose body. opencode's TUI takes the
+`**bold**` as the header and renders the rest as the body, so "Thought" blocks show
+a literal `<!-- -->` (5.5 is unaffected; it emits real prose).
 
-opencode exposes no hook to transform reasoning text, so the plugin strips the
-empty marker on the wire, on both transports opencode can use for the Responses
-API. Over HTTP/SSE it wraps `globalThis.fetch`; over opencode's experimental
-WebSocket transport (which bypasses `fetch` and drives the `ws` package directly)
-it patches `EventEmitter.prototype.emit` for identified Responses sockets. Either
-way it rewrites only the reasoning-summary delta events, and only for endpoints
-whose path ends in `/responses`, host-agnostic, so it also works when the `openai`
-provider is routed through a proxy or custom `baseURL`. A response with no
-`content-type` is treated as a stream, so a proxy that forwards SSE without the
-header is still handled. A marker split across two deltas is reconstructed
-without dropping content, and every other byte passes through unchanged. Once the
-empty comment is removed the body collapses and only the bold headline remains,
-matching how the Codex CLI renders it.
+opencode exposes no hook to transform reasoning text, so the plugin strips the empty
+marker on the wire, on both the HTTP/SSE path and opencode's experimental WebSocket
+transport. It touches only reasoning-summary events on `/responses` endpoints
+(host-agnostic, so it also works through a proxy or custom `baseURL`); everything
+else passes through unchanged. Once the empty comment is gone only the headline
+remains, matching the Codex CLI.
 
 ## Notes
 
-- Recovers the entire **Luna** tier (`gpt-5.6-luna` + `-fast` / `-pro`), which is
-  otherwise a hard 404, and keeps the **Terra** tier in the Codex priority tier so
-  it stops getting `server_is_overloaded` under load.
-- Does **not** unlock `gpt-5.6-sol` or base `gpt-5.6`. Those return `400 not
-  supported` from an account-entitlement gate, not a header check. Entitlement is
-  account-specific: some accounts have Sol, some do not, and no header changes that.
-- The gate is prefix-based on `codex_cli_rs/`, so the exact version string is not
-  critical; bump `CODEX_USER_AGENT` if OpenAI ever tightens the check.
+- Recovers the **Luna** tier (a hard 404 otherwise) and keeps **Terra** in the
+  Codex priority tier so it stops getting `server_is_overloaded` under load.
+- Does **not** unlock `gpt-5.6-sol` or base `gpt-5.6`: those hit an
+  account-entitlement gate (`400 not supported`), not a header check, and it is
+  account-specific.
 
 ## License
 

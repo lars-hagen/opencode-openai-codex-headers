@@ -1,21 +1,14 @@
-// Benchmark-instrumented variant of the plugin. DEV-ONLY: this file is tracked in
-// the repo but excluded from the published package (package.json files: ["src"]),
-// so a clone has it and an npm/github install does not. It measures
-// HTTP-vs-WebSocket time-to-first-token for the openai/Codex Responses stream.
+// Benchmark-instrumented variant of the plugin. DEV-ONLY: tracked in the repo but
+// excluded from the published package (package.json files: ["src"]), so a clone
+// has it and an npm/github install does not. Measures HTTP-vs-WebSocket
+// time-to-first-token for the Codex Responses stream.
 //
-// It does NOT duplicate the marker-stripping logic. It imports the shipped plugin
-// internals from ../src/index.ts via a wildcard import and only wraps them with
-// latency instrumentation, so the audited pieces (createReasoningRewriter,
-// transformSSE, isWsResponsesSocket, isTerminalType, isResponsesEndpoint) have a
-// single source of truth. When src/index.ts changes, this file picks it up on the
-// next load; never copy logic here.
+// It does not duplicate marker logic: it imports the shipped internals from
+// ../src/index.ts and only adds timing, so there is a single source of truth.
 //
-// Usage: no config change needed. The shipped plugin (src/index.ts) dynamically
-// imports this file only when CODEX_HEADERS_BENCH is set, so just run:
+// Usage (no config change; src/index.ts imports this only when the env var is set):
 //   OPENCODE_EXPERIMENTAL_WEBSOCKETS=true CODEX_HEADERS_BENCH=/tmp/ch.log opencode
-// Each `/responses` round trip logs `<transport> first_byte_ms=<n>` and
-// `<transport> done total_ms=<n>`. Compare medians across HTTP and WS, dropping
-// the cold turn-1 WS sample (its socket send is not wrapped until first frame).
+// Each `/responses` round trip logs `<transport> first_byte_ms` and `done total_ms`.
 
 import { EventEmitter } from "node:events"
 import { appendFileSync } from "node:fs"
@@ -31,8 +24,7 @@ function bench(line: string): void {
   }
 }
 
-// Passthrough wrapper around an already-transformed SSE stream that timestamps
-// the first byte and completion. Reuses core.transformSSE, adds only timing.
+// Timestamp first-byte and completion of an already-transformed SSE stream.
 function timeStream(src: ReadableStream<Uint8Array>, label: string, start: number): ReadableStream<Uint8Array> {
   const reader = src.getReader()
   let first = false
@@ -94,12 +86,12 @@ function installWsBench(): void {
   const originalEmit = proto.emit
   if (typeof originalEmit !== "function" || originalEmit[WS_FLAG]) return
 
-  type St = { rewriter: ReturnType<typeof core.createReasoningRewriter>; start: number; count: number }
-  const states = new WeakMap<object, St>()
+  type SocketState = { rewriter: ReturnType<typeof core.createReasoningRewriter>; start: number; count: number }
+  const states = new WeakMap<object, SocketState>()
   const lastSend = new WeakMap<object, number>()
   const sendWrapped = new WeakSet<object>()
 
-  function stateFor(sock: object): St {
+  function stateFor(sock: object): SocketState {
     let s = states.get(sock)
     if (!s) {
       s = { rewriter: core.createReasoningRewriter(), start: 0, count: 0 }
@@ -108,14 +100,11 @@ function installWsBench(): void {
     return s
   }
 
-  // Record the outbound response.create time so a warm socket's first inbound
-  // frame yields a true first_byte_ms. Wrapped once per socket (tracked in a
-  // WeakSet, never a socket property); because the wrap is installed when the
-  // first inbound frame is seen, turn 1 (cold) is untimed and turns 2+ (warm,
-  // reused socket) get a real time-to-first-token. Only response.create frames
-  // are timestamped, so keepalive pings between request and first token cannot
-  // skew the metric. All of this is best-effort: any failure here must never
-  // block marker cleanup, so it is fully isolated and the send is left intact.
+  // Record the outbound response.create time so a warm socket's first inbound frame
+  // yields a true first_byte_ms. The wrap is installed on the first inbound frame,
+  // so turn 1 (cold) is untimed and turns 2+ (warm, reused socket) are measured;
+  // only response.create frames are timestamped, so keepalive pings do not skew it.
+  // Best-effort and fully isolated: a non-writable send must never block cleanup.
   function timeSends(sock: any): void {
     if (sendWrapped.has(sock)) return
     try {
@@ -185,11 +174,5 @@ function installWsBench(): void {
 export default () => {
   installHttpBench()
   installWsBench()
-  return {
-    "chat.headers": async (input: any, output: any) => {
-      if (input?.model?.providerID !== "openai") return
-      output.headers.originator = "codex_cli_rs"
-      output.headers["User-Agent"] = core.CODEX_USER_AGENT
-    },
-  }
+  return { "chat.headers": core.headersHook() }
 }

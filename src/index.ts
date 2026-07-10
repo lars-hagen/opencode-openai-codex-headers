@@ -1,67 +1,41 @@
 // opencode-openai-codex-headers
 //
-// Two fixes for opencode on ChatGPT OAuth (the Codex backend at
-// chatgpt.com/backend-api/codex), both scoped to the openai provider:
+// Two fixes for the opencode `openai` provider on ChatGPT OAuth (the Codex
+// backend). Dependency-free and `any`-typed on purpose.
 //
-// 1. HEADERS. opencode's built-in CodexAuthPlugin sets `originator: "opencode"`
-//    and `User-Agent: opencode/<version> (...)` on every openai request via its
-//    "chat.headers" hook (packages/opencode/src/plugin/openai/codex.ts). OpenAI's
-//    Codex backend gates newer models on the client identity:
-//      - gpt-5.6-luna  -> HTTP 404 "Model not found" unless BOTH originator AND
-//                         User-Agent are the codex_cli_rs pair
-//      - gpt-5.6-terra -> served, but deprioritized ("server_is_overloaded"
-//                         load-shed) for non-codex clients under contention
-//    Both clear once the request presents the genuine Codex CLI signature.
-//    Config plugins load AFTER internal plugins, and Plugin.trigger runs every
-//    "chat.headers" hook in order against one shared `output`, so this override
-//    lands last and wins. It cannot help entitlement-blocked models such as
-//    gpt-5.6-sol, which return HTTP 400 "not supported when using Codex with a
-//    ChatGPT account" regardless of headers.
+// 1. HEADERS. opencode's built-in hook tags requests as `originator: opencode` /
+//    `User-Agent: opencode/...`; the Codex backend gates newer GPT-5.6 models on
+//    the client identity, so a `chat.headers` hook overrides both to the genuine
+//    `codex_cli_rs` pair. Config plugins load after internal ones and every hook
+//    runs against one shared output, so this override wins. It cannot lift
+//    account-entitlement gates, which fail regardless of headers.
 //
-// 2. REASONING SUMMARIES. gpt-5.6 emits reasoning summaries in a new
-//    headline format: each part is `**Bold title**\n\n<!-- -->` with no prose
-//    body. opencode's TUI summary parser (packages/tui/src/context/thinking.ts)
-//    takes the leading `**bold**` as the title and renders the rest as the body,
-//    so 5.6 "Thought" blocks show the literal `<!-- -->` marker instead of a
-//    clean header. opencode exposes no hook to transform reasoning text, so this
-//    strips the empty HTML-comment marker on the wire, on BOTH transports opencode
-//    can use for the Responses API:
-//      - HTTP/SSE: wraps globalThis.fetch and rewrites the reasoning-summary
-//        `*.delta` SSE events for any Responses endpoint (matched by `/responses`
-//        path suffix, so it also covers a proxied/custom baseURL) before opencode
-//        parses them.
-//      - WebSocket (opencode's experimental transport, OPENCODE_EXPERIMENTAL_WEBSOCKETS
-//        or channel local/dev/beta): that path bypasses globalThis.fetch and drives
-//        the `ws` package directly (packages/opencode/src/plugin/openai/ws.ts),
-//        delivering one JSON `response.*` event per text frame. We patch
-//        EventEmitter.prototype.emit (which every `ws` socket inherits) and rewrite
-//        the same reasoning-delta frames for sockets whose url ends in `/responses`.
-//    After stripping, the empty body collapses and only the bold headline shows.
-//
-// Dependency-free and `any`-typed on purpose: keeps the plugin trivial to load
-// and resolve wherever node_modules ends up.
+// 2. REASONING SUMMARIES. gpt-5.6 emits each summary part as
+//    `**Bold title**\n\n<!-- -->` with no prose body, and opencode's TUI renders
+//    the leading `<!-- -->` literally. opencode exposes no hook to transform
+//    reasoning text, so we strip the empty marker on the wire, on BOTH transports
+//    opencode uses for the Responses API:
+//      - HTTP/SSE: wrap globalThis.fetch and rewrite the reasoning-delta events.
+//      - WebSocket (opencode's experimental transport): that path drives the `ws`
+//        package directly and never touches globalThis.fetch, so we patch
+//        EventEmitter.prototype.emit, which every `ws` socket inherits, and
+//        rewrite the same frames. See installWebSocketCleanup for why.
 
 import { EventEmitter } from "node:events"
 
-// Bump to match a current Codex CLI release if the backend ever tightens the
-// check; the gate is prefix-based on `codex_cli_rs/`, so the version is not
-// critical.
+// Bump if the backend tightens the check; the gate matches the `codex_cli_rs/` prefix.
 export const CODEX_USER_AGENT = "codex_cli_rs/0.144.0"
 
-// The Responses API endpoint carrying reasoning-summary events. Matched by path
-// suffix only (never host), the same way opencode scopes it internally
-// (ws-pool.ts, llm.test.ts). Host-agnostic so it also matches when the openai
-// provider is routed through a custom baseURL / proxy such as Sleev, where the
-// URL is e.g. http://127.0.0.1:17321/v1/responses instead of chatgpt.com.
+// The Responses API endpoint, matched by path suffix only (never host), so it also
+// matches when the openai provider is routed through a custom baseURL / proxy.
 const RESPONSES_PATH_SUFFIX = "/responses"
 
 // Marks our wrapped fetch / patched emit so repeated plugin loads don't stack.
 const PATCH_FLAG = "__opencodeCodexReasoningCleanup"
 const WS_PATCH_FLAG = "__opencodeCodexReasoningCleanupWs"
 
-// The native Responses parser routes all three of these `*.delta` events into
-// reasoning text (openai-responses.ts step()); gpt-5.6 uses the last one. The
-// matching `*.done` events are no-ops in the parser, so they need no cleanup.
+// The three `*.delta` event types opencode routes into reasoning text; gpt-5.6
+// uses the last. The matching `*.done` events need no cleanup.
 const REASONING_DELTA_TYPES = new Set([
   "response.reasoning_text.delta",
   "response.reasoning_summary.delta",
@@ -69,9 +43,8 @@ const REASONING_DELTA_TYPES = new Set([
 ])
 
 // Terminal Responses events: after any of these no more reasoning deltas arrive,
-// so a still-withheld dangling `<!--` fragment must be flushed before they pass.
-// Matched on the exact top-level event `type` (not a raw-text regex, which could
-// hit a nested field), and includes `error`, which opencode treats as terminal.
+// so a withheld dangling `<!--` must be flushed before they pass. Matched on the
+// exact top-level `type` (not raw text), and includes `error`.
 const TERMINAL_TYPES = new Set([
   "response.completed",
   "response.done",
@@ -83,20 +56,15 @@ export function isTerminalType(t: unknown): boolean {
   return typeof t === "string" && TERMINAL_TYPES.has(t)
 }
 
-// A stateful rewriter that removes the empty HTML-comment marker gpt-5.6 appends
-// after a summary headline. It strips only the empty `<!-- -->` marker, so real
-// comment content is never dropped, and it reconstructs the marker when it is
-// split across two consecutive reasoning deltas (observed as `...<!--` then
-// ` -->`) WITHOUT corrupting content: a dangling `<!--` at a delta's end is held
-// back and only removed once the next reasoning delta completes the empty
-// marker; otherwise the held text is restored verbatim (prepended to the next
-// delta, or flushed at stream end), so a genuine trailing `<!--` is never lost.
+// Stateful rewriter that removes the empty `<!-- -->` gpt-5.6 appends after a
+// summary headline. A `<!--` dangling at a delta's end is held back and dropped
+// only if the next delta completes an empty marker; otherwise it is restored
+// verbatim, so real content and a genuine trailing `<!--` are never lost.
 export function createReasoningRewriter() {
   let carry = "" // dangling open-marker fragment withheld from a prior delta
   let carryEvent: any = null // the event it came from, reused verbatim if flushed
 
-  // Rewrite a single JSON `response.*` event object in place. Returns true if the
-  // delta changed (or carry state advanced). Shared by the SSE and WS paths.
+  // Rewrite one JSON `response.*` event in place; returns whether it changed.
   function rewriteEvent(ev: any): boolean {
     if (!ev || !REASONING_DELTA_TYPES.has(ev.type) || typeof ev.delta !== "string") return false
     const hadCarry = carry !== ""
@@ -115,9 +83,9 @@ export function createReasoningRewriter() {
     return true
   }
 
-  // Build the event that restores a never-completed dangling `<!--`: the original
-  // event (keeping its item_id / summary_index so opencode attributes the text to
-  // the right reasoning item) with only the delta swapped for the held fragment.
+  // Restore a never-completed dangling `<!--`: the original event (keeps item_id /
+  // summary_index so opencode attributes the text right) with the delta swapped
+  // for the held fragment.
   function carriedEvent(): any {
     const ev = carryEvent || { type: "response.reasoning_summary_text.delta" }
     ev.delta = carry
@@ -126,10 +94,10 @@ export function createReasoningRewriter() {
     return ev
   }
 
-  // HTTP/SSE: rewrite reasoning-delta text inside a block of complete SSE lines.
-  // A withheld fragment is flushed as its own `data:` line immediately before a
-  // terminal event or `[DONE]`, since opencode stops reading the body there.
-  function process(block: string): string {
+  // HTTP/SSE: rewrite reasoning deltas in a block of complete SSE lines, flushing
+  // a withheld fragment as its own `data:` line before a terminal event or `[DONE]`
+  // (opencode stops reading the body there).
+  function processSseBlock(block: string): string {
     const out: string[] = []
     for (const line of block.split("\n")) {
       if (!line.startsWith("data:")) {
@@ -163,9 +131,8 @@ export function createReasoningRewriter() {
     return out.join("\n")
   }
 
-  // WebSocket: rewrite reasoning-delta text inside one text frame (one or more
-  // newline-delimited raw JSON events, no `data:` prefix). Also reports whether
-  // the frame held a terminal event so the caller can flush before it passes.
+  // WebSocket: rewrite reasoning deltas in one text frame (newline-delimited raw
+  // JSON, no `data:` prefix); also reports whether a terminal event appeared.
   function processFrame(frame: string): { text: string; terminal: boolean } {
     let terminal = false
     const text = frame
@@ -187,20 +154,19 @@ export function createReasoningRewriter() {
     return { text, terminal }
   }
 
-  // Emit any still-withheld fragment as its own SSE line so a genuine trailing
-  // `<!--` that was never completed is restored rather than swallowed.
+  // Emit a still-withheld fragment so a genuine trailing `<!--` is restored, not swallowed.
   function flush(): string {
     if (!carry) return ""
     return "data: " + JSON.stringify(carriedEvent())
   }
 
-  // WebSocket equivalent of flush(): the withheld fragment as a bare JSON frame.
+  // WebSocket equivalent of flush().
   function flushFrame(): string {
     if (!carry) return ""
     return JSON.stringify(carriedEvent())
   }
 
-  return { process, processFrame, flush, flushFrame }
+  return { processSseBlock, processFrame, flush, flushFrame }
 }
 
 // Buffer partial lines so JSON is only parsed once an SSE line is complete.
@@ -216,7 +182,7 @@ export function transformSSE(body: ReadableStream<Uint8Array>): ReadableStream<U
         const { done, value } = await reader.read()
         if (done) {
           buffer += decoder.decode() // flush any trailing multibyte sequence
-          let tail = buffer ? rewriter.process(buffer) : ""
+          let tail = buffer ? rewriter.processSseBlock(buffer) : ""
           const flushed = rewriter.flush() // restore any withheld open-marker fragment
           if (flushed) tail += (tail && !tail.endsWith("\n") ? "\n" : "") + flushed
           if (tail) controller.enqueue(encoder.encode(tail))
@@ -228,7 +194,7 @@ export function transformSSE(body: ReadableStream<Uint8Array>): ReadableStream<U
         if (cut === -1) continue
         const ready = buffer.slice(0, cut + 1)
         buffer = buffer.slice(cut + 1)
-        controller.enqueue(encoder.encode(rewriter.process(ready)))
+        controller.enqueue(encoder.encode(rewriter.processSseBlock(ready)))
         return
       }
     },
@@ -255,17 +221,15 @@ function installReasoningCleanup(): void {
     try {
       const url =
         typeof input === "string" ? input : input instanceof URL ? input.href : input && input.url ? input.url : ""
-      // Only Responses-API SSE streams, and only reasoning-summary delta lines
-      // are ever modified; every other line passes through unchanged. Treat a
-      // missing content-type as a stream: a proxy (e.g. Sleev) may forward the
-      // SSE without the header, while a real non-stream reply (an error body)
-      // still declares application/json and is left untouched.
+      // Treat a missing content-type as a stream: a proxy (e.g. Sleev) may forward
+      // SSE without the header, while a real non-stream reply (an error body) still
+      // declares application/json and is left untouched. Only reasoning-delta lines
+      // are ever modified.
       const contentType = (res.headers.get("content-type") || "").toLowerCase()
       const isStream = contentType === "" || contentType.includes("text/event-stream")
       if (isResponsesEndpoint(url) && res.ok && res.body && isStream) {
-        // Rewriting the body changes its length, and the underlying fetch has
-        // already decoded any transfer encoding, so drop the headers that would
-        // otherwise describe the original bytes.
+        // Body length changes and fetch already decoded transfer encoding; drop
+        // the headers that describe the original bytes.
         const headers = new Headers(res.headers)
         headers.delete("content-length")
         headers.delete("content-encoding")
@@ -284,10 +248,9 @@ function installReasoningCleanup(): void {
   g.fetch = wrapped
 }
 
-// Positively identify a `ws` WebSocket before touching it: duck-type on the
-// ws-specific API (ping/send/readyState) so an unrelated EventEmitter that merely
-// exposes a `url` is never rewritten, and read `url` behind a try/catch in case
-// it is a throwing getter. This keeps the shared prototype patch inert elsewhere.
+// Positively identify a `ws` socket before touching it (this is a process-wide
+// prototype patch): duck-type on the ws API and read `url` behind try/catch, so an
+// unrelated EventEmitter that merely exposes a `url` is never rewritten.
 export function isWsResponsesSocket(obj: any): boolean {
   if (!obj || typeof obj.ping !== "function" || typeof obj.send !== "function" || typeof obj.readyState !== "number")
     return false
@@ -323,8 +286,7 @@ function installWebSocketCleanup(): void {
   }
 
   const patched = function (this: any, eventName: string, ...args: any[]): boolean {
-    // Fast path: nothing but "message"/"close" on an identified ws Responses
-    // socket is ever inspected; url is only read once past the event-name gate.
+    // Only "message"/"close" on an identified ws Responses socket is inspected.
     if (eventName !== "message" && eventName !== "close") return originalEmit.apply(this, [eventName, ...args])
     if (!isWsResponsesSocket(this)) return originalEmit.apply(this, [eventName, ...args])
 
@@ -365,35 +327,33 @@ function installWebSocketCleanup(): void {
   proto.emit = patched
 }
 
+// The `chat.headers` hook: override the two identity headers on the openai
+// provider only. Exported so the benchmark variant reuses it without duplicating.
+export function headersHook() {
+  return async (input: any, output: any) => {
+    if (input?.model?.providerID !== "openai") return
+    output.headers.originator = "codex_cli_rs"
+    output.headers["User-Agent"] = CODEX_USER_AGENT
+  }
+}
+
 export default async () => {
-  // Opt-in latency instrumentation. `CODEX_HEADERS_BENCH=/path/to/log opencode`
-  // loads the local-only benchmark variant (.dev/index.bench.ts, gitignored),
-  // which reuses the exports above and adds first_byte/done timing on both the
-  // HTTP and WebSocket transports. That folder is absent in published/github
-  // installs, so a missing or failed import silently falls back to the normal
-  // plugin below. No behavior change unless the env var is set.
+  // Opt-in latency instrumentation: `CODEX_HEADERS_BENCH=/path opencode` loads the
+  // dev-only benchmark variant, which reuses the exports below and adds timing.
+  // dev/benchmark.ts is tracked but excluded from the published package (files:
+  // ["src"]), so it is absent from npm/github installs; a failed import silently
+  // falls back to the normal plugin. Only load failures are swallowed; an error
+  // thrown while the module installs propagates.
   if (process.env.CODEX_HEADERS_BENCH) {
     let benchModule: any
     try {
       benchModule = await import("../dev/benchmark.ts")
     } catch {
-      // dev/benchmark.ts is tracked in the repo but excluded from the published
-      // package (files: ["src"]), so it is present in a clone but absent from an
-      // npm/github install: in that case fall back to the normal plugin. Only a
-      // failure to LOAD the module is swallowed here; if the module loads, any
-      // error it throws while installing propagates rather than silently stacking
-      // core over a partial benchmark install.
       benchModule = undefined
     }
     if (benchModule) return await benchModule.default()
   }
   installReasoningCleanup()
   installWebSocketCleanup()
-  return {
-    "chat.headers": async (input: any, output: any) => {
-      if (input?.model?.providerID !== "openai") return
-      output.headers.originator = "codex_cli_rs"
-      output.headers["User-Agent"] = CODEX_USER_AGENT
-    },
-  }
+  return { "chat.headers": headersHook() }
 }

@@ -50,9 +50,9 @@ the same shared output, so it wins; every other provider is untouched.
 
 **Reasoning cleanup.** opencode exposes no hook to transform reasoning text, so the
 plugin rewrites the summary events on the wire, on both the HTTP/SSE path and
-opencode's experimental WebSocket transport. It touches only reasoning-summary
-events on `/responses` endpoints (host-agnostic, so it also works through a proxy or
-custom `baseURL`); everything else passes through unchanged.
+opencode's experimental WebSocket transport. It touches only reasoning delta events
+on `/responses` endpoints (host-agnostic, so it also works through a proxy or custom
+`baseURL`); everything else passes through unchanged.
 
 ## License
 

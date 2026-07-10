@@ -29,9 +29,8 @@ opencode plugin opencode-openai-codex-headers -g
 }
 ```
 
-Pin a version for reproducible installs (`opencode-openai-codex-headers@1.2.2`), or
-drop the suffix to track the latest release. Installing straight from GitHub also
-works if you prefer source (`github:lars-hagen/opencode-openai-codex-headers#v1.2.2`).
+Pin a version for reproducible installs (`opencode-openai-codex-headers@1.2.3`), or
+drop the suffix to track the latest release.
 
 ## The problem
 

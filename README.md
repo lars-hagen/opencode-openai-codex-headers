@@ -1,5 +1,7 @@
 # opencode-openai-codex-headers
 
+[![npm](https://img.shields.io/npm/v/opencode-openai-codex-headers)](https://www.npmjs.com/package/opencode-openai-codex-headers)
+
 An [opencode](https://opencode.ai) plugin for ChatGPT Plus/Pro (Codex backend)
 users. It does two things, both scoped to the `openai` provider:
 
@@ -15,7 +17,7 @@ users. It does two things, both scoped to the `openai` provider:
 current project):
 
 ```bash
-opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.2 -g
+opencode plugin opencode-openai-codex-headers -g
 ```
 
 **Manual**: add it to the `plugin` array in your `opencode.json`:
@@ -23,11 +25,13 @@ opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.2 -g
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.2.2"]
+  "plugin": ["opencode-openai-codex-headers"]
 }
 ```
 
-The `#v1.2.2` tag pins a reproducible version; omit it to track the default branch.
+Pin a version for reproducible installs (`opencode-openai-codex-headers@1.2.2`), or
+drop the suffix to track the latest release. Installing straight from GitHub also
+works if you prefer source (`github:lars-hagen/opencode-openai-codex-headers#v1.2.2`).
 
 ## The problem
 

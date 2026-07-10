@@ -17,7 +17,7 @@ Two ways, both install straight from GitHub (no npm publish involved).
 for your global `~/.config/opencode`, drop it to add to the current project:
 
 ```bash
-opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.0 -g
+opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.1 -g
 ```
 
 **Manual** add it to the `plugin` array in your `opencode.json`:
@@ -25,11 +25,11 @@ opencode plugin github:lars-hagen/opencode-openai-codex-headers#v1.2.0 -g
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.2.0"]
+  "plugin": ["github:lars-hagen/opencode-openai-codex-headers#v1.2.1"]
 }
 ```
 
-The `#v1.2.0` tag pins a reproducible version. Omit it
+The `#v1.2.1` tag pins a reproducible version. Omit it
 (`github:lars-hagen/opencode-openai-codex-headers`) to track the default branch at
 install time instead.
 
@@ -82,12 +82,18 @@ and renders the rest as the body, so 5.6 "Thought" blocks show a literal
 prose).
 
 opencode exposes no hook to transform reasoning text, so the plugin strips the
-markers on the wire: it wraps `globalThis.fetch` and rewrites the
-`response.reasoning_summary_text` SSE events from the Codex Responses endpoint
-before opencode parses them. Only those event lines are touched; every other
-byte of every response passes through unchanged. Once the empty comment is
-removed the body collapses and only the bold headline remains, matching how the
-Codex CLI renders it.
+empty marker on the wire, on both transports opencode can use for the Responses
+API. Over HTTP/SSE it wraps `globalThis.fetch`; over opencode's experimental
+WebSocket transport (which bypasses `fetch` and drives the `ws` package directly)
+it patches `EventEmitter.prototype.emit` for identified Responses sockets. Either
+way it rewrites only the reasoning-summary delta events, and only for endpoints
+whose path ends in `/responses`, host-agnostic, so it also works when the `openai`
+provider is routed through a proxy or custom `baseURL`. A response with no
+`content-type` is treated as a stream, so a proxy that forwards SSE without the
+header is still handled. A marker split across two deltas is reconstructed
+without dropping content, and every other byte passes through unchanged. Once the
+empty comment is removed the body collapses and only the bold headline remains,
+matching how the Codex CLI renders it.
 
 ## Notes
 

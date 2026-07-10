@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "opencode-openai-codex-headers",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "OpenCode plugin: make ChatGPT-OAuth (Codex backend) requests identify as the Codex CLI so gated GPT-5.6 models (luna, terra) stop returning 'Model not found' / 'server_is_overloaded', and clean up GPT-5.6 reasoning-summary rendering",
   "keywords": [

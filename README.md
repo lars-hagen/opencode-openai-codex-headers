@@ -38,8 +38,6 @@ opencode plugin opencode-openai-codex-headers -g
 }
 ```
 
-Append `@<version>` to pin a specific release; otherwise you get the latest.
-
 ## How it works
 
 **Identity.** A `chat.headers` hook overwrites `originator` and `User-Agent` on the

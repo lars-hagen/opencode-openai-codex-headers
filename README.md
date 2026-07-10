@@ -38,7 +38,7 @@ opencode plugin opencode-openai-codex-headers -g
 }
 ```
 
-Pin a version for reproducible installs (`opencode-openai-codex-headers@1.2.3`), or
+Pin a version for reproducible installs (`opencode-openai-codex-headers@1.2.4`), or
 drop the suffix to track the latest release.
 
 ## How it works

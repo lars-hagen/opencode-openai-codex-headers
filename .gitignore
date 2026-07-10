@@ -1,6 +1,3 @@
 node_modules
 *.log
 .DS_Store
-
-# local-only dev tooling (benchmark-instrumented plugin variant, etc)
-.dev/

@@ -375,13 +375,14 @@ export default async () => {
   if (process.env.CODEX_HEADERS_BENCH) {
     let benchModule: any
     try {
-      benchModule = await import("../.dev/index.bench.ts")
+      benchModule = await import("../dev/benchmark.ts")
     } catch {
-      // .dev/ is absent (published/github install, where it is gitignored) or
-      // otherwise unresolvable: use the normal plugin. Only a failure to LOAD the
-      // module is swallowed here; if the module loads, any error it throws while
-      // installing propagates rather than silently stacking core over a partial
-      // benchmark install.
+      // dev/benchmark.ts is tracked in the repo but excluded from the published
+      // package (files: ["src"]), so it is present in a clone but absent from an
+      // npm/github install: in that case fall back to the normal plugin. Only a
+      // failure to LOAD the module is swallowed here; if the module loads, any
+      // error it throws while installing propagates rather than silently stacking
+      // core over a partial benchmark install.
       benchModule = undefined
     }
     if (benchModule) return await benchModule.default()

@@ -2,14 +2,23 @@
 
 [![npm](https://img.shields.io/npm/v/opencode-openai-codex-headers)](https://www.npmjs.com/package/opencode-openai-codex-headers)
 
-An [opencode](https://opencode.ai) plugin for ChatGPT Plus/Pro (Codex backend)
-users. It does two things, both scoped to the `openai` provider:
+An [opencode](https://opencode.ai) plugin for ChatGPT Plus/Pro users on the Codex
+backend. It smooths over the rough edges in opencode's OpenAI/Codex integration for
+the GPT-5.6 models (Sol, Terra, Luna) until native support lands upstream.
 
-1. Makes requests identify as the real **Codex CLI**, fixing GPT-5.6 **Luna**
-   models that otherwise return `404 Model not found` and stopping GPT-5.6
-   **Terra** getting `server_is_overloaded` under load.
-2. Cleans up GPT-5.6 **reasoning summaries** so the "Thought" blocks show a clean
-   headline instead of a stray `<!-- -->` marker.
+## What it fixes
+
+- **Luna 404s.** GPT-5.6 Luna models return `404 Model not found`. The Codex backend
+  gates them on the client identity, and opencode identifies as `opencode` rather
+  than the Codex CLI. The plugin restores the genuine Codex signature so Luna is
+  served, and keeps Terra in the Codex priority tier so it stops load-shedding with
+  `server_is_overloaded` under contention.
+- **Missing session names.** opencode's title agent runs on a Luna model, so the
+  same 404 leaves every session stuck on its default `New session - <timestamp>`
+  name. Recovering Luna fixes the titles.
+- **Reasoning-summary markers.** GPT-5.6 ends each reasoning summary with an empty
+  `<!-- -->` comment that opencode's TUI renders literally under the "Thought"
+  headline. The plugin strips it on the wire so only the headline remains.
 
 ## Install
 
@@ -32,64 +41,18 @@ opencode plugin opencode-openai-codex-headers -g
 Pin a version for reproducible installs (`opencode-openai-codex-headers@1.2.3`), or
 drop the suffix to track the latest release.
 
-## The problem
+## How it works
 
-When you log into the `openai` provider with ChatGPT Plus/Pro, opencode talks to
-the Codex backend at `chatgpt.com/backend-api/codex`. Its built-in auth plugin
-tags every request with `originator: opencode` and a `User-Agent: opencode/<version>`.
+**Identity.** A `chat.headers` hook overwrites `originator` and `User-Agent` on the
+`openai` provider only, so requests present the genuine Codex CLI signature (the
+backend requires both). It loads after opencode's internal hooks and runs against
+the same shared output, so it wins; every other provider is untouched.
 
-That backend gates the GPT-5.6 family on the client identity. Surveying all 12
-stock GPT-5.6 models on a ChatGPT Plus account (the `-fast` / `-pro` suffixes are
-not separate API ids; opencode sends the base model with a `service_tier` /
-`reasoning.mode` body param, so each row covers its whole family):
-
-| Model family | Without the Codex signature | With this plugin |
-| --- | --- | --- |
-| `gpt-5.6-luna` (`-fast`, `-pro`) | HTTP 404 `Model not found gpt-5.6-luna` | fixed, served |
-| `gpt-5.6-terra` (`-fast`, `-pro`) | works, but load-shed with `server_is_overloaded` under contention | works + Codex priority tier |
-| `gpt-5.6-sol` (`-fast`, `-pro`) | account-dependent (`400 not supported` without the entitlement) | no change: gated on the account, not headers |
-| `gpt-5.6` (`-fast`, `-pro`) | account-dependent (`400 not supported` without the entitlement) | no change: gated on the account, not headers |
-
-The genuine Codex CLI does not hit the 404 / load-shed because it sends
-`originator: codex_cli_rs` **and** `User-Agent: codex_cli_rs/<version>`. The
-backend requires **both**. `sol` and base `gpt-5.6` are a separate
-account-entitlement gate: an account without it gets `400 not supported`, and an
-account with it (e.g. Pro, or once Sol is enabled) is served either way. This
-plugin neither unlocks nor blocks them; their availability follows your plan, not
-the client identity.
-
-## What it does
-
-**Headers.** A `chat.headers` hook overwrites `originator` and `User-Agent` for the
-`openai` provider only, so requests present the genuine Codex CLI signature. It
-loads after opencode's internal hooks and runs against the same shared output, so
-it wins; every other provider is untouched.
-
-## Reasoning summaries
-
-GPT-5.6 emits each reasoning-summary part as a bold title followed by an empty HTML
-comment, `**Title**\n\n<!-- -->`, with no prose body. opencode's TUI takes the
-`**bold**` as the header and renders the rest as the body, so "Thought" blocks show
-a literal `<!-- -->` (5.5 is unaffected; it emits real prose).
-
-opencode exposes no hook to transform reasoning text, so the plugin strips the empty
-marker on the wire, on both the HTTP/SSE path and opencode's experimental WebSocket
-transport. It touches only reasoning-summary events on `/responses` endpoints
-(host-agnostic, so it also works through a proxy or custom `baseURL`); everything
-else passes through unchanged. Once the empty comment is gone only the headline
-remains, matching the Codex CLI.
-
-## Notes
-
-- Recovers the **Luna** tier (a hard 404 otherwise) and keeps **Terra** in the
-  Codex priority tier so it stops getting `server_is_overloaded` under load.
-- Restores **session titles**. opencode's title/summary agent runs on a small
-  Luna model (`gpt-5.6-luna-pro`), so without the Codex signature that call 404s
-  and the session keeps its default `New session - <timestamp>` name. Recovering
-  Luna fixes the titles as a side effect.
-- Availability of `gpt-5.6-sol` and base `gpt-5.6` follows your account plan, not
-  this plugin: it neither unlocks nor blocks them. Accounts without the
-  entitlement get `400 not supported`; entitled accounts are served either way.
+**Reasoning cleanup.** opencode exposes no hook to transform reasoning text, so the
+plugin rewrites the summary events on the wire, on both the HTTP/SSE path and
+opencode's experimental WebSocket transport. It touches only reasoning-summary
+events on `/responses` endpoints (host-agnostic, so it also works through a proxy or
+custom `baseURL`); everything else passes through unchanged.
 
 ## License
 

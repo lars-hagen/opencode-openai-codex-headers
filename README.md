@@ -47,13 +47,16 @@ not separate API ids; opencode sends the base model with a `service_tier` /
 | --- | --- | --- |
 | `gpt-5.6-luna` (`-fast`, `-pro`) | HTTP 404 `Model not found gpt-5.6-luna` | fixed, served |
 | `gpt-5.6-terra` (`-fast`, `-pro`) | works, but load-shed with `server_is_overloaded` under contention | works + Codex priority tier |
-| `gpt-5.6-sol` (`-fast`, `-pro`) | HTTP 400 `not supported when using Codex with a ChatGPT account` | unchanged (account gate) |
-| `gpt-5.6` (`-fast`, `-pro`) | HTTP 400 `not supported when using Codex with a ChatGPT account` | unchanged (account gate) |
+| `gpt-5.6-sol` (`-fast`, `-pro`) | account-dependent (`400 not supported` without the entitlement) | no change: gated on the account, not headers |
+| `gpt-5.6` (`-fast`, `-pro`) | account-dependent (`400 not supported` without the entitlement) | no change: gated on the account, not headers |
 
 The genuine Codex CLI does not hit the 404 / load-shed because it sends
 `originator: codex_cli_rs` **and** `User-Agent: codex_cli_rs/<version>`. The
-backend requires **both**. The `400 not supported` cases are a separate
-account-entitlement gate that no header can change.
+backend requires **both**. `sol` and base `gpt-5.6` are a separate
+account-entitlement gate: an account without it gets `400 not supported`, and an
+account with it (e.g. Pro, or once Sol is enabled) is served either way. This
+plugin neither unlocks nor blocks them; their availability follows your plan, not
+the client identity.
 
 ## What it does
 
@@ -80,9 +83,13 @@ remains, matching the Codex CLI.
 
 - Recovers the **Luna** tier (a hard 404 otherwise) and keeps **Terra** in the
   Codex priority tier so it stops getting `server_is_overloaded` under load.
-- Does **not** unlock `gpt-5.6-sol` or base `gpt-5.6`: those hit an
-  account-entitlement gate (`400 not supported`), not a header check, and it is
-  account-specific.
+- Restores **session titles**. opencode's title/summary agent runs on a small
+  Luna model (`gpt-5.6-luna-pro`), so without the Codex signature that call 404s
+  and the session keeps its default `New session - <timestamp>` name. Recovering
+  Luna fixes the titles as a side effect.
+- Availability of `gpt-5.6-sol` and base `gpt-5.6` follows your account plan, not
+  this plugin: it neither unlocks nor blocks them. Accounts without the
+  entitlement get `400 not supported`; entitled accounts are served either way.
 
 ## License
 

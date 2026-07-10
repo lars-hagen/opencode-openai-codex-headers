@@ -24,14 +24,13 @@ jobs:
       - name: Test
         run: bun test
 
+      # Node 24 bundles npm >= 11.5.1, which OIDC trusted publishing requires.
+      # Do not `npm i -g npm@latest` here: self-upgrading over the bundled npm
+      # breaks provenance's sigstore module resolution.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
-
-      # OIDC trusted publishing requires npm >= 11.5.1.
-      - name: Update npm
-        run: npm install -g npm@latest
 
       - name: Verify tag matches package.json version
         run: |
